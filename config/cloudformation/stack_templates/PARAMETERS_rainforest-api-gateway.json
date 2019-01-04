@@ -1,0 +1,19 @@
+[
+  {
+    "ParameterKey": "APIName",
+    "ParameterValue": "Rainforest EAGLE API"
+  },
+  {
+    "ParameterKey": "APIEnvironment",
+    "ParameterValue": "prod"
+  },
+  {
+    "ParameterKey": "LambdaRoleARN",
+    "ParameterValue": "arn:aws:iam::547053441796:role/Rainforest-Gateway-Role"
+  },
+  {
+    "ParameterKey": "LambdaFunctionName",
+    "ParameterValue": "RainforestProcessIncoming"
+  }
+
+]

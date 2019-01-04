@@ -1,0 +1,323 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+
+#AutoScaling Groups require
+#* Name
+#* Launch Configuration
+#* Availability Zone(s)
+#* Min/Max/Desired
+#* Health Check Type (EC2, ELB)
+#* Instance Tags (key/value pairs)
+
+
+#Each Launch Configuration requires
+#* Name
+#* AMI
+#* Instance Type (t2.micro, etc)
+#* UserData
+#* IAM Role (Instance Profile)
+#* EC2 Security Group(s)
+
+#Each Security Group requires
+#* Name
+#* VPC
+#* Ingress Rule(s)
+
+Description: Bastion Stack.
+
+Parameters:
+  AwsEnvironment:
+    Type: String
+    Description: The AWS Environment.
+
+  S3Bucket:
+    Type: String
+    Description: S3 Bucket to be used.
+
+  ElasticIp:
+    Type: String
+    Description: Elastic ip.  
+
+  KeyName:
+    Type: String
+    Description: Name of an existing EC2 KeyPair to enable SSH access.
+
+  CustomAmiId:
+    Type: String
+    Description: Name of an existing EC2 KeyPair to enable SSH access.
+
+  IamRole:
+    Type: String
+    Description: IAM Role to be attached.
+
+  LcUserData:
+    Type: String
+    Description: Launch Configuration UserData.
+
+  AsgHealthWebServerFlag:
+    Type: String
+    Default: true
+    Description: AutoScaling Group HealthWeb Server Flag.
+
+  VPC:
+    Type: AWS::EC2::VPC::Id
+    Description: Pick desired VPC.
+
+  PrivateDns:
+    Type: String
+    Description: Private DNS URL.
+
+  DomainCertificateName:
+    Type: String
+    Description: Domain certificate name.
+
+  PrivateZoneId:
+    Type: String
+    Description: Private Zone id.
+
+  RoleArn:
+    Type: String
+    Description: Role ARN only for Test.
+
+  SubNets:
+    Type: CommaDelimitedList
+    Default: "WILL BE REPLACED WHEN PARENT STACK CALLS THIS STACK"
+    Description: LIST OF SUBNETS.
+
+  InstanceTypeParameter:
+    Type: String
+    Description: EC2_INSTANCE Type
+
+  AsgDesiredCount:
+    Type: Number
+    Description: Desired count EC2_INSTANCEs in the ASG.
+
+  AsgMinCount:
+    Type: Number
+    Description: Minimum count EC2_INSTANCEs in the ASG.
+
+  AsgMaxCount:
+    Type: Number
+    Description: Maximum count EC2_INSTANCEs in the ASG.
+
+  HealthCheckType:
+    Type: String
+    Description: Health Check Type in the ASG.
+
+  HealthCheckGracePeriod:
+    Type: String
+    Description: Health Check Type in the ASG.
+
+  DockerImage:
+    Type: String
+    Description: Docker image to be used in the container.
+
+  NginxProxyPass:
+    Type: String
+    Description: Nginx Proxy Pass.
+
+  TxsetProxyPass:
+    Type: String
+    Description: Txset Proxy Pass.
+
+  SwapFileName:
+    Type: String
+    Description: EC2 Instance swap file name.
+
+  SwapFileSize:
+    Type: Number
+    Description: EC2 Instance swap file size.
+
+  Ttl:
+    Type: Number
+    Description: EC2 Instance swap file size.
+
+Resources:
+  #######################Beginning of Security Group Definition #############################
+  SecGpBastion:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId:
+        Ref: VPC
+      GroupDescription: SecGpBastion
+      SecurityGroupIngress:
+            - IpProtocol: tcp
+              CidrIp: 10.50.0.0/16
+              FromPort: '443'
+              ToPort: '443'
+
+            - IpProtocol: tcp
+              CidrIp:  162.89.23.10/32
+              FromPort: '443'
+              ToPort: '443'
+
+            - IpProtocol: tcp
+              CidrIp: 10.50.0.0/22
+              FromPort: '8081'
+              ToPort: '8081'
+      VpcId:
+        Ref: VPC
+
+  # SecGpIngressBastion:
+  #   Type: AWS::EC2::SecurityGroupIngress
+  #   Properties:
+  #     GroupId:
+  #       Ref: SecGpBastion
+  #     IpProtocol: tcp
+  #     FromPort: '80'
+  #     ToPort: '80'
+  #     SourceSecurityGroupId: !Ref SecGpBastion
+  #######################End of Security Group Definition ###################################
+
+
+
+  #######################Beginning of LaunchConfiguration Definition ########################
+  LcBastion:
+    Type: AWS::AutoScaling::LaunchConfiguration   
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        WaitOnResourceSignals: false
+    Properties:
+      KeyName: !Ref KeyName
+      ImageId: !Ref CustomAmiId
+      InstanceType: !Ref InstanceTypeParameter
+      IamInstanceProfile: !Ref IamRole
+      SecurityGroups:
+        - !Ref SecGpBastion
+      UserData:
+        Fn::Base64: !Sub |
+          Ref: ${LcUserData}
+  #######################End of LaunchConfiguration Definition ##############################
+
+
+
+  #######################Beginning of AutoScaling Group Definition ##########################
+  AsgBastion:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      LaunchConfigurationName: !Ref LcBastion
+      AvailabilityZones:
+        Fn::GetAZs: !Ref AWS::Region
+      VPCZoneIdentifier: !Ref SubNets
+      MinSize: !Ref AsgMinCount
+      MaxSize: !Ref AsgMaxCount
+      DesiredCapacity: !Ref AsgMinCount
+      HealthCheckType: !Ref HealthCheckType
+      HealthCheckGracePeriod: !Ref HealthCheckGracePeriod
+      Tags:
+        - Key: Name
+          Value: test-bastion
+          PropagateAtLaunch: true
+
+        - Key: ECS_CLUSTER
+          Value: test-bastion
+          PropagateAtLaunch: true
+
+        - Key: ELASTIC_IP
+          Value: !Ref ElasticIp
+          PropagateAtLaunch: true
+
+        - Key: TTL
+          Value: !Ref Ttl
+          PropagateAtLaunch: true
+
+        - Key: SWAPFILE_NAME
+          Value: !Ref SwapFileName
+          PropagateAtLaunch: true
+
+        - Key: SWAPFILE_SIZE 
+          Value: !Ref SwapFileSize
+          PropagateAtLaunch: true
+
+        - Key: environment
+          Value: !Ref AwsEnvironment
+          PropagateAtLaunch: true
+
+        - Key: S3_BUCKET
+          Value: !Ref S3Bucket
+          PropagateAtLaunch: true
+
+        - Key: HEALTH_WEBSERVER
+          Value: !Ref AsgHealthWebServerFlag
+          PropagateAtLaunch: true
+
+        - Key: PRIVATE_DNS
+          Value: !Ref PrivateDns
+          PropagateAtLaunch: true
+
+        - Key: NGINX_PROXY_PASS
+          Value: !Ref NginxProxyPass
+          PropagateAtLaunch: true
+
+        - Key: TXSET_PROXY_PASS
+          Value: !Ref TxsetProxyPass
+          PropagateAtLaunch: true
+
+        # - Key: 
+        #   Value:
+        #   PropagateAtLaunch: true
+  #######################End of AutoScaling Group Definition ################################
+
+
+
+  #######################Beginning of Task Definition #######################################
+  TaskDefBastion:
+    Type: AWS::ECS::TaskDefinition   
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        WaitOnResourceSignals: false
+    Properties:
+      ##############Begining of Container Definition #################
+      Family: !Join [ "", [ Ref: AwsEnvironment, "_BASTION" ] ]
+      ContainerDefinitions:
+        - 
+          Name: ers
+          Image: 
+            Ref: DockerImage
+          ## CPU Units
+          Cpu: 100
+          PortMappings: 
+            - 
+              ContainerPort: 443
+              HostPort: 443
+              Protocol: tcp
+            - 
+              ContainerPort: 80
+              HostPort: 80
+              Protocol: tcp
+          ##Memory in MiB
+          ##For Hard limits use "Memory:"
+          ##For Soft limits use "MemoryReservation:"
+          MemoryReservation: 100
+          Essential: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: bastion
+              awslogs-region: us-west-2
+              awslogs-stream-prefix: nginx
+          ####For DockerLabels don't use "-" for adding a new key pair.
+          DockerLabels:
+            environment: Test
+          Environment:
+            - Name: NGINX_CERT
+              Value: austinenergy-ers_com.crt.pem
+            - Name: NGINX_FILES
+              Value: s3://test-oadr/config/nginx/
+            - Name: NGINX_HOST
+              Value: test.austinenergy-ers.com
+            - Name: NGINX_HOST
+              Value:
+                Ref: DomainCertificateName
+            - Name: NGINX_PORT
+              Value: 443
+            - Name: NGINX_PROXY_PASS
+              Value: https://elb-internal.test.austinenergy-ers.com:443
+      ##############End of Container Definition ######################
+  #######################End of Task Definition #######################################
+
+Outputs:
+  MyOutput:
+    Description: Information about the value
+    Value: 
+      Ref: LcUserData

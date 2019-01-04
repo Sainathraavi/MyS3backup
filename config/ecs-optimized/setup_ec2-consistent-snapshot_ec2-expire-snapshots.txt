@@ -1,0 +1,66 @@
+Installing ec2-consistent-snapshot under Amazon Linux on EC2
+
+Two tools that make automating snapshots much easier under EC2 instances are:
+ec2-consistent-snapshot
+Allows you to schedule cron jobs to freeze the filesystem, flush and lock mysql databases and request a snapshot of an EBS volume.
+ec2-expire-snapshots
+Allows you to schedule crons job that will delete your old EBS snapshots.
+Unfortunately these two tools are only easy to install under Ubuntu on EC2 instances. Under Amazon's own distribution, Amazon Linux, you'll need to enable additional repositories and manually install the tools. This post will guide you through installing the dependencies and using the tools.
+1) Install Dependencies
+
+You'll need to enable the epel repository to install some of these dependencies, you can enable it with the --enablerepo flag.
+
+sudo yum --enablerepo=epel install perl-Net-Amazon-EC2 \
+perl-File-Slurp perl-DBI perl-DBD-MySQL perl-Net-SSLeay \
+perl-IO-Socket-SSL perl-Time-HiRes perl-Params-Validate \
+perl-DateTime-Format-ISO8601 perl-Date-Manip perl-Moose \
+ca-certificates
+
+2) Download Files
+mkdir download
+cd download
+
+wget -O ec2-consistent-snapshot.zip \
+https://github.com/alestic/ec2-consistent-snapshot/archive/master.zip
+
+wget -O ec2-expire-snapshots.zip \
+https://github.com/alestic/ec2-expire-snapshots/archive/master.zip
+
+unzip ec2-consistent-snapshot.zip
+unzip ec2-expire-snapshots.zip
+3) Copy the Scripts
+
+You should put the scripts somewhere useful. I recommend /usr/local/bin
+
+sudo cp ec2-consistent-snapshot-master/ec2-consistent-snapshot \
+/usr/local/bin/
+sudo cp ec2-expire-snapshots-master/ec2-expire-snapshots \
+/usr/local/bin/
+
+Using the Tools
+
+You're all done with installation. Now you can use your access keys to create consistent snapshots and delete old snapshots. If you're not sure what an access key is you can read up about Amazon Access credentials.
+Creating a Snapshot
+
+This quick example flushes and locks mysql, freezes the filesystem, and creates a snapshot. This is for the root filesystem on an instance in the Sydney, Australia AWS region.
+
+ec2-consistent-snapshot --aws-access-key-id <YOURKEYID> \
+--aws-secret-access-key <YOURSECRETKEY> --description="backup snapshot" \
+--freeze-filesystem / --region ap-southeast-2 \
+--mysql --mysql-username=root --mysql-password="<PASSWORD>" <VOLUMEID>
+Removing Old Snapshots
+
+If you set up a cron job to automatically take snapshots, then you probably need to make sure that you also set up a cron job to remove old snapshots. This example keeps the most recent 5 snapshots and deletes everything else.
+
+ec2-expire-snapshots --aws-access-key-id <YOURKEYID> \
+--aws-secret-access-key <YOURSECRETKEY> --region ap-southeast-2 \
+--keep-most-recent 5 <VOLUMEID>
+Automating
+
+You can easily add these commands as cron jobs, you'll need to adjust your path slightly and add the -q flag so that the command runs quietly. An example cron job that takes a snapshot each morning at 4am is included below. This freezes the filesystem but doesn't flush and lock mysql tables.
+
+0 4 * * * root PATH=$PATH:/sbin:/usr/sbin /usr/local/bin/ec2-consistent-snapshot -q --aws-access-key-id <YOURKEYID> --aws-secret-access-key <YOURSECRETKEY> --description="backup snapshot" --freeze-filesystem / --region ap-southeast-2 <VOLUMEID>
+
+This is a definition for a cron job that runs each morning at 5am and deletes all but the last 5 snapshots of a volume.
+
+0 5 * * * ec2-user PATH=$PATH:/sbin:/usr/sbin /usr/local/bin/ec2-expire-snapshots -q --aws-access-key-id <YOURKEYID> --aws-secret-access-key <YOURSECRETKEY> --region ap-southeast-2 --keep-most-recent 5 <VOLUMEID>

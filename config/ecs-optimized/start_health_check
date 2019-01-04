@@ -1,0 +1,5 @@
+#!/bin/bash
+cd /env
+source bin/activate
+./health_check.py &
+mosquitto

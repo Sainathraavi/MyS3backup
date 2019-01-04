@@ -1,0 +1,156 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Create Launch Configurations and AutoScaling Groups
+
+Mappings:
+  AccountSpecific:
+    test:
+      DomainCertificateName: austinenergy-ers_com.key.pem
+      PrivateDns: test.austinenergy-ers.com
+      PrivateZoneId: ZI3AW1KVQJNP4
+      RoleArn: arn:aws:iam::551255458270:role/route53zones
+
+  RegionSpecific:
+    TestWest2:
+      PrivateKeyName: test-us-west2-paari
+      CustomAmiId: ami-033ca963
+      VpcId: vpc-35421851
+      SubNetList: "subnet-5ed39b3a, subnet-9683e3e0, subnet-4bb61a13"
+
+  ChildTemplateMap:
+    BASTION:
+      TemplateFileName: CFT_BASTION_V1.yaml
+      InstanceType: t2.micro
+      AsgDesiredCount: 1
+      AsgMinCount: 1
+      AsgMaxCount: 1
+      HealthCheckType: ELB
+      HealthCheckGracePeriod: 300
+      DockerImage: 613327227989.dkr.ecr.us-west-2.amazonaws.com/control/nginx:2016.06.08
+      ElasticIp: eipalloc-320cfc55
+      NginxProxyPass: https://prod-internal.austinenergy-ers.com
+      TxsetProxyPass: https://2n9rpr19gh.execute-api.us-west-2.amazonaws.com/prod
+    VTN:
+      TemplateFileName: CFT_VTN_V1.yaml
+      InstanceType: t2.small
+      AsgDesiredCount: 1
+      AsgMinCount1: 1
+      AsgMaxCount1: 1
+      HealthCheckType: ELB
+      HealthCheckGracePeriod: 300
+
+Parameters:  
+  S3Bucket:
+    Type: String
+    Default: s3://test-oadr/config
+    Description: Working Environment.
+
+  TemplateUrlBeginning:
+    Type: String
+    Default: https://s3-us-west-2.amazonaws.com/test-oadr/config/cloudformation/stack_templates/
+    Description: Template S3 url Beginning.  
+
+  AwsEnvironment:
+    Type: String
+    AllowedValues:
+      - production
+      - test
+    Description: Working Environment.
+
+  Region:
+    Type: String
+    AllowedValues:
+      - TestWest2
+      - TestEast1
+      - ProdWest2
+      - ProdEast1
+    Description: AWS Region.
+
+  IamRole:
+    Type: String
+    Default: developer-role
+    Description: IAM Role to be attached.
+
+  UniversalLcUserData:
+    Type: String
+    Default: |
+      #!/bin/bash
+      #
+      # INIT SYSTEM FROM EC2 INSTANCE VARIABLES
+      #
+      /usr/bin/init-ec2-env-vars.sh
+    Description: Bastion User Data.
+
+  BastionLcUserData:
+    Type: String
+    Default: |
+      #!/bin/bash
+      #
+      # INIT SYSTEM FROM EC2 INSTANCE VARIABLES
+      #
+      /usr/bin/init-ec2-env-vars.sh
+
+      # restart nginx daily
+      cat << 'EOF' >> /etc/cron.daily/restart-nginx.sh
+      #!/bin/bash
+      docker exec $(docker ps | grep nginx | awk '{print $1}') /usr/sbin/nginx -s reload
+      EOF
+      chmod +x /etc/cron.daily/restart-nginx.sh
+    Description: Bastion User Data.
+
+Resources:
+  StackBastion:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL:
+        !Join [ "", [ Ref: TemplateUrlBeginning, !FindInMap [ ChildTemplateMap, BASTION, TemplateFileName ] ] ]
+      Parameters:
+          LcUserData:
+            Ref: BastionLcUserData
+          IamRole:
+            Ref: IamRole
+          AwsEnvironment:
+            Ref: AwsEnvironment
+          S3Bucket:
+            Ref: S3Bucket
+          KeyName:
+            !FindInMap [ RegionSpecific, Ref: Region, PrivateKeyName ]
+          CustomAmiId:
+            !FindInMap [ RegionSpecific, Ref: Region, CustomAmiId ]
+          VPC:
+            !FindInMap [ RegionSpecific, Ref: Region, VpcId ]
+          SubNets:
+            !FindInMap [ RegionSpecific, Ref: Region, SubNetList ]
+          DomainCertificateName:
+            !FindInMap [ AccountSpecific, Ref: AwsEnvironment, DomainCertificateName ]
+          PrivateDns:
+            !FindInMap [ AccountSpecific, Ref: AwsEnvironment, PrivateDns ]
+          PrivateZoneId:
+            !FindInMap [ AccountSpecific, Ref: AwsEnvironment, PrivateZoneId ]
+          RoleArn:
+            !FindInMap [ AccountSpecific, Ref: AwsEnvironment, RoleArn ]
+          ElasticIp:
+            !FindInMap [ ChildTemplateMap, BASTION, ElasticIp ]
+          InstanceTypeParameter:
+            !FindInMap [ ChildTemplateMap, BASTION, InstanceType ]
+          AsgDesiredCount:
+            !FindInMap [ ChildTemplateMap, BASTION, AsgDesiredCount ]
+          AsgMinCount:
+            !FindInMap [ ChildTemplateMap, BASTION, AsgMinCount ]
+          AsgMaxCount:
+            !FindInMap [ ChildTemplateMap, BASTION, AsgMaxCount ]
+          HealthCheckType:
+            !FindInMap [ ChildTemplateMap, BASTION, HealthCheckType ]
+          HealthCheckGracePeriod:
+            !FindInMap [ ChildTemplateMap, BASTION, HealthCheckGracePeriod ]
+          DockerImage:
+            !FindInMap [ ChildTemplateMap, BASTION, DockerImage ]
+          NginxProxyPass:
+            !FindInMap [ ChildTemplateMap, BASTION, NginxProxyPass ]
+          TxsetProxyPass:
+            !FindInMap [ ChildTemplateMap, BASTION, TxsetProxyPass ]
+
+Outputs:
+  MyOutput:
+    Description: Information about the value
+    Value: Test
